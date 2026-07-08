@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       url:
-        description: "YouTube channel URL"
+        description: "YouTube channel URL (overrides config.yml)"
         required: false
         default: ""
       num_videos:
@@ -41,15 +41,12 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Generate feed
-        env:
-          YT_CHANNEL_URL: ${{ secrets.YT_CHANNEL_URL || inputs.url }}
         run: |
-          URL="${YT_CHANNEL_URL}"
-          if [ -z "$URL" ]; then
-            echo "Error: YT_CHANNEL_URL secret or workflow input not set"
-            exit 1
+          if [ -n "${{ inputs.url }}" ]; then
+            python generate_feed.py "${{ inputs.url }}" -n "${{ inputs.num_videos }}" -o feed.xml
+          else
+            python generate_feed.py -n "${{ inputs.num_videos || '20' }}" -o feed.xml
           fi
-          python generate_feed.py "$URL" -n "${inputs.num_videos:-20}" -o feed.xml
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

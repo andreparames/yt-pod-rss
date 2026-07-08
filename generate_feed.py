@@ -5,23 +5,65 @@ import os
 import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
-from xml.sax.saxutils import escape
 
 ET.register_namespace("atom", "http://www.w3.org/2005/Atom")
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate an RSS 2.0 podcast feed from a YouTube channel.")
-    parser.add_argument("url", nargs="?", help="YouTube channel URL")
+    parser.add_argument("url", nargs="?", help="YouTube channel URL (overrides config.yml)")
     parser.add_argument("-o", "--output", default="feed.xml", help="Output RSS file (default: feed.xml)")
     parser.add_argument("-n", "--num-videos", type=int, default=20, help="Number of recent videos (default: 20)")
+    parser.add_argument("-c", "--config", default="config.yml", help="Config file (default: config.yml)")
     parser.add_argument("--test", action="store_true", help="Use sample test data instead of YouTube")
     return parser.parse_args()
 
 
+def load_config(path):
+    if not os.path.exists(path):
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+    config = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if ":" in line and not line.startswith("#"):
+            key, _, val = line.partition(":")
+            config[key.strip()] = val.strip().strip("\"'")
+    return config
+
+
+def _is_short(entry):
+    title = (entry.get("title") or "").lower()
+    if "#shorts" in title:
+        return True
+    duration = entry.get("duration")
+    if duration is not None and duration <= 60:
+        return True
+    return False
+
+
+def _extract_audio(entry):
+    formats = entry.get("formats") or []
+    audio_fmts = [f for f in formats if f.get("vcodec") == "none" and f.get("acodec") not in (None, "none")]
+    if audio_fmts:
+        best = audio_fmts[-1]
+        url = best.get("url", "")
+        ext = best.get("ext", "m4a")
+        audio_type = "audio/mp4" if ext == "m4a" else f"audio/{ext}"
+        length = best.get("filesize") or best.get("filesize_approx") or 0
+        return url, audio_type, length
+    return "", "audio/mpeg", 0
+
+
 def fetch_videos_real(channel_url, num_videos):
     import yt_dlp
-    ydl_opts = {"quiet": True, "extract_flat": "in_playlist"}
+
+    channel_url = channel_url.rstrip("/")
+    if not channel_url.endswith("/videos"):
+        channel_url += "/videos"
+
+    ydl_opts = {"quiet": True, "extract_flat": False}
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(channel_url, download=False)
 
@@ -32,45 +74,21 @@ def fetch_videos_real(channel_url, num_videos):
         sys.exit(1)
 
     videos = []
-    full_ydl = yt_dlp.YoutubeDL({"quiet": True})
-    for i, entry in enumerate(entries[:num_videos]):
-        vid = entry["id"]
-        print(f"[{i+1}/{min(num_videos, len(entries))}] Fetching {vid}...", file=sys.stderr)
-        try:
-            vinfo = full_ydl.extract_info(f"https://www.youtube.com/watch?v={vid}", download=False)
-        except Exception as e:
-            print(f"  Skipping {vid}: {e}", file=sys.stderr)
+    for entry in entries:
+        if len(videos) >= num_videos:
+            break
+        if _is_short(entry):
             continue
 
-        audio_url = None
-        audio_type = "audio/mp4"
-        length = 0
-        if vinfo.get("formats"):
-            audio_fmts = [f for f in vinfo["formats"] if f.get("vcodec") == "none" and f.get("acodec") != "none"]
-            if audio_fmts:
-                best = audio_fmts[-1]
-                audio_url = best.get("url") or audio_url
-                ext = best.get("ext", "m4a")
-                audio_type = f"audio/{ext}"
-                audio_type = audio_type.replace("audio/m4a", "audio/mp4")
-                length = best.get("filesize") or best.get("filesize_approx") or 0
-            else:
-                any_audio = [f for f in vinfo["formats"] if f.get("acodec") != "none"]
-                if any_audio:
-                    best = any_audio[-1]
-                    audio_url = best.get("url") or audio_url
-                    ext = best.get("ext", "mp4")
-                    audio_type = f"audio/{ext}"
-                    audio_type = audio_type.replace("audio/m4a", "audio/mp4")
-                    length = best.get("filesize") or best.get("filesize_approx") or 0
+        audio_url, audio_type, length = _extract_audio(entry)
 
         videos.append({
-            "title": vinfo.get("title", entry.get("title", "")),
-            "description": vinfo.get("description", ""),
-            "published": vinfo.get("upload_date") or entry.get("upload_date", ""),
-            "url": f"https://www.youtube.com/watch?v={vid}",
-            "video_id": vid,
-            "audio_url": audio_url or "",
+            "title": entry.get("title", ""),
+            "description": entry.get("description") or "",
+            "published": entry.get("upload_date", ""),
+            "url": f"https://www.youtube.com/watch?v={entry['id']}",
+            "video_id": entry["id"],
+            "audio_url": audio_url,
             "audio_type": audio_type,
             "length": length,
             "channel_title": channel_title,
@@ -81,7 +99,6 @@ def fetch_videos_real(channel_url, num_videos):
 def load_test_data():
     test_data_path = os.path.join(os.path.dirname(__file__), "test_data.json")
     if not os.path.exists(test_data_path):
-        print("Test data file not found. Generating inline sample data.", file=sys.stderr)
         return None
     with open(test_data_path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -166,7 +183,6 @@ def generate_rss(videos, channel_url):
     channel_title = videos[0]["channel_title"] if videos else "YouTube Podcast"
     ET.SubElement(channel, "title").text = channel_title
     ET.SubElement(channel, "link").text = channel_url
-    ET.SubElement(channel, "description").text = f"Podcast feed generated from {channel_url}"
 
     atom_link = ET.SubElement(channel, "{http://www.w3.org/2005/Atom}link")
     atom_link.set("href", channel_url)
@@ -175,9 +191,10 @@ def generate_rss(videos, channel_url):
 
     ET.SubElement(channel, "language").text = "en-us"
     ET.SubElement(channel, "lastBuildDate").text = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S %z")
+    ET.SubElement(channel, "description").text = f"Podcast feed for {channel_title}"
 
     image = ET.SubElement(channel, "image")
-    ET.SubElement(image, "url").text = f"https://www.google.com/s2/favicons?domain=youtube.com&sz=128"
+    ET.SubElement(image, "url").text = "https://www.google.com/s2/favicons?domain=youtube.com&sz=128"
     ET.SubElement(image, "title").text = channel_title
     ET.SubElement(image, "link").text = channel_url
 
@@ -207,9 +224,13 @@ def generate_rss(videos, channel_url):
 def main():
     args = parse_args()
 
-    channel_url = args.url or os.environ.get("YT_CHANNEL_URL", "")
+    channel_url = args.url
     if not channel_url and not args.test:
-        print("Error: YouTube channel URL required (provide as argument or set YT_CHANNEL_URL env var)", file=sys.stderr)
+        config = load_config(args.config)
+        channel_url = config.get("channel_url", "")
+
+    if not channel_url and not args.test:
+        print("Error: YouTube channel URL required. Provide as argument or set in config.yml.", file=sys.stderr)
         sys.exit(1)
 
     if args.test:

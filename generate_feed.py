@@ -56,7 +56,7 @@ def _extract_audio(entry):
     return "", "audio/mpeg", 0
 
 
-def fetch_videos_real(channel_url, num_videos):
+def fetch_videos_real(channel_url, num_videos, player_client=None):
     import yt_dlp
 
     channel_url = channel_url.rstrip("/")
@@ -64,6 +64,11 @@ def fetch_videos_real(channel_url, num_videos):
         channel_url += "/videos"
 
     ydl_opts = {"quiet": True, "extract_flat": False}
+    if player_client:
+        ydl_opts["extractor_args"] = {"youtube": {"player_client": [player_client]}}
+    cookies_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
+    if os.path.exists(cookies_path):
+        ydl_opts["cookiefile"] = cookies_path
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(channel_url, download=False)
 
@@ -224,10 +229,11 @@ def generate_rss(videos, channel_url):
 def main():
     args = parse_args()
 
-    channel_url = args.url
-    if not channel_url and not args.test:
+    config = {}
+    if not args.test or not args.url:
         config = load_config(args.config)
-        channel_url = config.get("channel_url", "")
+
+    channel_url = args.url or config.get("channel_url", "")
 
     if not channel_url and not args.test:
         print("Error: YouTube channel URL required. Provide as argument or set in config.yml.", file=sys.stderr)
@@ -242,7 +248,8 @@ def main():
             videos = generate_sample_videos()
             channel_url = channel_url or "https://youtube.com/@test"
     else:
-        videos = fetch_videos_real(channel_url, args.num_videos)
+        client = config.get("player_client") or None
+        videos = fetch_videos_real(channel_url, args.num_videos, player_client=client)
 
     rss_xml = generate_rss(videos, channel_url)
 

@@ -52,10 +52,16 @@ jobs:
             python generate_feed.py -n "${{ inputs.num_videos || '20' }}" -o feed.xml
           fi
 
+      - name: Prepare Pages output
+        run: |
+          mkdir -p _site
+          cp feed.xml _site/
+          if [ -d media ]; then cp -r media _site/; fi
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: feed.xml
+          path: _site
 
       - name: Deploy to GitHub Pages
         id: deployment

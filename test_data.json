@@ -7,7 +7,7 @@
       "published": "20260315",
       "url": "https://www.youtube.com/watch?v=sample1",
       "video_id": "sample1",
-      "audio_url": "https://example.com/audio/sample1.mp3",
+      "audio_url": "media/sample1.mp3",
       "audio_type": "audio/mpeg",
       "length": 12345678,
       "channel_title": "Test Channel"
@@ -18,7 +18,7 @@
       "published": "20260310",
       "url": "https://www.youtube.com/watch?v=sample2",
       "video_id": "sample2",
-      "audio_url": "https://example.com/audio/sample2.mp3",
+      "audio_url": "media/sample2.mp3",
       "audio_type": "audio/mpeg",
       "length": 23456789,
       "channel_title": "Test Channel"
@@ -29,7 +29,7 @@
       "published": "20260305",
       "url": "https://www.youtube.com/watch?v=sample3",
       "video_id": "sample3",
-      "audio_url": "https://example.com/audio/sample3.mp3",
+      "audio_url": "media/sample3.mp3",
       "audio_type": "audio/mpeg",
       "length": 34567890,
       "channel_title": "Test Channel"
@@ -40,7 +40,7 @@
       "published": "20260228",
       "url": "https://www.youtube.com/watch?v=sample4",
       "video_id": "sample4",
-      "audio_url": "https://example.com/audio/sample4.mp3",
+      "audio_url": "media/sample4.mp3",
       "audio_type": "audio/mpeg",
       "length": 45678901,
       "channel_title": "Test Channel"
@@ -51,7 +51,7 @@
       "published": "20260220",
       "url": "https://www.youtube.com/watch?v=sample5",
       "video_id": "sample5",
-      "audio_url": "https://example.com/audio/sample5.mp3",
+      "audio_url": "media/sample5.mp3",
       "audio_type": "audio/mpeg",
       "length": 56789012,
       "channel_title": "Test Channel"

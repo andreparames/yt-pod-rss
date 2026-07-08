@@ -43,38 +43,49 @@ def _is_short(entry):
     return False
 
 
-def _extract_audio(entry):
-    formats = entry.get("formats") or []
-    audio_fmts = [f for f in formats if f.get("vcodec") == "none" and f.get("acodec") not in (None, "none")]
-    if audio_fmts:
-        best = audio_fmts[-1]
-        url = best.get("url", "")
-        ext = best.get("ext", "m4a")
-        audio_type = "audio/mp4" if ext == "m4a" else f"audio/{ext}"
-        length = best.get("filesize") or best.get("filesize_approx") or 0
-        return url, audio_type, length
-    return "", "audio/mpeg", 0
+def base_opts(player_client=None):
+    opts = {"quiet": True, "remote_components": ["ejs:github"]}
+    if player_client:
+        opts["extractor_args"] = {"youtube": {"player_client": [player_client]}}
+    cookies_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
+    if os.path.exists(cookies_path):
+        opts["cookiefile"] = cookies_path
+    return opts
+
+
+def download_audio(video_id, media_dir, player_client=None):
+    import yt_dlp
+
+    download_opts = {
+        **base_opts(player_client),
+        "format": "bestaudio[ext=m4a]/bestaudio",
+        "outtmpl": os.path.join(media_dir, "%(id)s.%(ext)s"),
+        "nooverwrites": True,
+    }
+    with yt_dlp.YoutubeDL(download_opts) as ydl:
+        info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
+
+    ext = info.get("ext", "m4a")
+    filepath = os.path.join(media_dir, f"{video_id}.{ext}")
+    if not os.path.exists(filepath):
+        from glob import glob
+        matches = glob(os.path.join(media_dir, f"{video_id}.*"))
+        filepath = matches[0] if matches else filepath
+
+    size = os.path.getsize(filepath)
+    mime = "audio/mp4" if ext == "m4a" else f"audio/{ext}"
+    rel_path = os.path.join("media", f"{video_id}.{ext}").replace("\\", "/")
+    return info, rel_path, mime, size
 
 
 def fetch_videos_real(channel_url, num_videos, player_client=None):
     import yt_dlp
-    from yt_dlp.utils import DownloadError
 
     channel_url = channel_url.rstrip("/")
     if not channel_url.endswith("/videos"):
         channel_url += "/videos"
 
-    def base_opts():
-        opts = {"quiet": True, "remote_components": ["ejs:github"]}
-        if player_client:
-            opts["extractor_args"] = {"youtube": {"player_client": [player_client]}}
-        cookies_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
-        if os.path.exists(cookies_path):
-            opts["cookiefile"] = cookies_path
-        return opts
-
-    # Fetch video list with flat mode (resilient against format errors)
-    with yt_dlp.YoutubeDL({**base_opts(), "extract_flat": "in_playlist"}) as ydl:
+    with yt_dlp.YoutubeDL({**base_opts(player_client), "extract_flat": "in_playlist"}) as ydl:
         info = ydl.extract_info(channel_url, download=False)
 
     channel_title = info.get("channel", info.get("title", ""))
@@ -83,7 +94,8 @@ def fetch_videos_real(channel_url, num_videos, player_client=None):
         print("No videos found.", file=sys.stderr)
         sys.exit(1)
 
-    full_ydl = yt_dlp.YoutubeDL(base_opts())
+    media_dir = os.path.join(os.path.dirname(__file__), "media")
+    os.makedirs(media_dir, exist_ok=True)
 
     videos = []
     for entry in entries:
@@ -93,18 +105,12 @@ def fetch_videos_real(channel_url, num_videos, player_client=None):
             continue
 
         vid = entry["id"]
+        print(f"  Downloading {vid}...", file=sys.stderr)
         try:
-            vinfo = full_ydl.extract_info(f"https://www.youtube.com/watch?v={vid}", download=False)
-        except DownloadError as e:
-            print(f"  Error fetching {vid}: {e}", file=sys.stderr)
-            if hasattr(e, "exc_info") and e.exc_info:
-                partial = getattr(e.exc_info, "partial_data", None)
-                if partial and partial.get("formats"):
-                    fmts = partial["formats"]
-                    print(f"  Available format IDs: {', '.join(f['format_id'] for f in fmts)}", file=sys.stderr)
+            vinfo, rel_path, mime, size = download_audio(vid, media_dir, player_client)
+        except Exception as e:
+            print(f"  Error downloading {vid}: {e}", file=sys.stderr)
             continue
-
-        audio_url, audio_type, length = _extract_audio(vinfo)
 
         videos.append({
             "title": vinfo.get("title", entry.get("title", "")),
@@ -112,9 +118,9 @@ def fetch_videos_real(channel_url, num_videos, player_client=None):
             "published": vinfo.get("upload_date") or entry.get("upload_date", ""),
             "url": f"https://www.youtube.com/watch?v={vid}",
             "video_id": vid,
-            "audio_url": audio_url,
-            "audio_type": audio_type,
-            "length": length,
+            "audio_url": rel_path,
+            "audio_type": mime,
+            "length": size,
             "channel_title": channel_title,
         })
     return videos
@@ -136,7 +142,7 @@ def generate_sample_videos():
             "published": "20260315",
             "url": "https://www.youtube.com/watch?v=sample1",
             "video_id": "sample1",
-            "audio_url": "https://example.com/audio/sample1.mp3",
+            "audio_url": "media/sample1.mp3",
             "audio_type": "audio/mpeg",
             "length": 12345678,
             "channel_title": "Sample Channel",
@@ -147,7 +153,7 @@ def generate_sample_videos():
             "published": "20260310",
             "url": "https://www.youtube.com/watch?v=sample2",
             "video_id": "sample2",
-            "audio_url": "https://example.com/audio/sample2.mp3",
+            "audio_url": "media/sample2.mp3",
             "audio_type": "audio/mpeg",
             "length": 23456789,
             "channel_title": "Sample Channel",
@@ -158,7 +164,7 @@ def generate_sample_videos():
             "published": "20260305",
             "url": "https://www.youtube.com/watch?v=sample3",
             "video_id": "sample3",
-            "audio_url": "https://example.com/audio/sample3.mp3",
+            "audio_url": "media/sample3.mp3",
             "audio_type": "audio/mpeg",
             "length": 34567890,
             "channel_title": "Sample Channel",
@@ -169,7 +175,7 @@ def generate_sample_videos():
             "published": "20260228",
             "url": "https://www.youtube.com/watch?v=sample4",
             "video_id": "sample4",
-            "audio_url": "https://example.com/audio/sample4.mp3",
+            "audio_url": "media/sample4.mp3",
             "audio_type": "audio/mpeg",
             "length": 45678901,
             "channel_title": "Sample Channel",
@@ -180,7 +186,7 @@ def generate_sample_videos():
             "published": "20260220",
             "url": "https://www.youtube.com/watch?v=sample5",
             "video_id": "sample5",
-            "audio_url": "https://example.com/audio/sample5.mp3",
+            "audio_url": "media/sample5.mp3",
             "audio_type": "audio/mpeg",
             "length": 56789012,
             "channel_title": "Sample Channel",

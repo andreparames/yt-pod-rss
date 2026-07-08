@@ -37,6 +37,10 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
       - name: Install dependencies
         run: pip install -r requirements.txt
 

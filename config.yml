@@ -1,2 +1,3 @@
-channel_url: https://www.youtube.com/@streaminghoramagica7290/
-# player_client: android  # Uncomment if bot-blocked (may cause flaky audio URLs)
+feeds:
+  - name: streaminghoramagica7290
+    channel_url: https://www.youtube.com/@streaminghoramagica7290/

@@ -5,12 +5,8 @@ on:
     - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
-      url:
-        description: "YouTube channel URL (overrides config.yml)"
-        required: false
-        default: ""
       num_videos:
-        description: "Number of videos"
+        description: "Number of videos per feed"
         required: false
         default: "20"
 
@@ -44,20 +40,15 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Generate feed
+      - name: Generate feeds
         env:
           YT_COOKIES: ${{ secrets.YT_COOKIES }}
-        run: |
-          if [ -n "${{ inputs.url }}" ]; then
-            python generate_feed.py "${{ inputs.url }}" -n "${{ inputs.num_videos }}" -o feed.xml
-          else
-            python generate_feed.py -n "${{ inputs.num_videos || '20' }}" -o feed.xml
-          fi
+        run: python generate_feed.py -n "${{ inputs.num_videos || '20' }}"
 
       - name: Prepare Pages output
         run: |
           mkdir -p _site
-          cp feed.xml _site/
+          cp *.xml _site/ 2>/dev/null || true
           if [ -d media ]; then cp -r media _site/; fi
 
       - name: Upload Pages artifact

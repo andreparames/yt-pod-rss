@@ -2,17 +2,20 @@
 import argparse
 import json
 import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 ET.register_namespace("atom", "http://www.w3.org/2005/Atom")
 
+NAME_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate an RSS 2.0 podcast feed from a YouTube channel.")
-    parser.add_argument("url", nargs="?", help="YouTube channel URL (overrides config.yml)")
-    parser.add_argument("-o", "--output", default="feed.xml", help="Output RSS file (default: feed.xml)")
+    parser.add_argument("url", nargs="?", help="YouTube channel URL")
+    parser.add_argument("-o", "--output", default=None, help="Output RSS file (default: {name}.xml)")
     parser.add_argument("-n", "--num-videos", type=int, default=20, help="Number of recent videos (default: 20)")
     parser.add_argument("-c", "--config", default="config.yml", help="Config file (default: config.yml)")
     parser.add_argument("--test", action="store_true", help="Use sample test data instead of YouTube")
@@ -21,16 +24,20 @@ def parse_args():
 
 def load_config(path):
     if not os.path.exists(path):
-        return {}
-    with open(path, "r", encoding="utf-8") as f:
-        text = f.read()
-    config = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if ":" in line and not line.startswith("#"):
-            key, _, val = line.partition(":")
-            config[key.strip()] = val.strip().strip("\"'")
-    return config
+        return None
+    try:
+        import yaml
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+    except ImportError:
+        print("Install pyyaml: pip install pyyaml", file=sys.stderr)
+        sys.exit(1)
+
+
+def validate_name(name):
+    if not NAME_RE.match(name):
+        print(f"Invalid feed name: {name!r}. Use only letters, digits, hyphens, underscores.", file=sys.stderr)
+        sys.exit(1)
 
 
 def _is_short(entry):
@@ -66,7 +73,7 @@ def base_opts(player_client=None):
     return opts
 
 
-def download_audio(video_id, media_dir, player_client=None):
+def download_audio(video_id, media_dir, feed_name, player_client=None):
     import yt_dlp
 
     download_opts = {
@@ -87,11 +94,11 @@ def download_audio(video_id, media_dir, player_client=None):
 
     size = os.path.getsize(filepath)
     mime = "audio/mp4" if ext == "m4a" else f"audio/{ext}"
-    rel_path = os.path.join("media", f"{video_id}.{ext}").replace("\\", "/")
+    rel_path = f"media/{feed_name}/{video_id}.{ext}"
     return info, rel_path, mime, size
 
 
-def fetch_videos_real(channel_url, num_videos, player_client=None):
+def process_channel(name, channel_url, num_videos, player_client=None):
     import yt_dlp
 
     channel_url = channel_url.rstrip("/")
@@ -104,10 +111,10 @@ def fetch_videos_real(channel_url, num_videos, player_client=None):
     channel_title = info.get("channel", info.get("title", ""))
     entries = info.get("entries", [])
     if not entries:
-        print("No videos found.", file=sys.stderr)
-        sys.exit(1)
+        print(f"  No videos found for {name}.", file=sys.stderr)
+        return []
 
-    media_dir = os.path.join(os.path.dirname(__file__), "media")
+    media_dir = os.path.join(os.path.dirname(__file__), "media", name)
     os.makedirs(media_dir, exist_ok=True)
 
     videos = []
@@ -120,7 +127,7 @@ def fetch_videos_real(channel_url, num_videos, player_client=None):
         vid = entry["id"]
         print(f"  Downloading {vid}...", file=sys.stderr)
         try:
-            vinfo, rel_path, mime, size = download_audio(vid, media_dir, player_client)
+            vinfo, rel_path, mime, size = download_audio(vid, media_dir, name, player_client)
         except Exception as e:
             print(f"  Error downloading {vid}: {e}", file=sys.stderr)
             continue
@@ -147,59 +154,59 @@ def load_test_data():
         return json.load(f)
 
 
-def generate_sample_videos():
+def generate_sample_videos(feed_name="sample"):
     return [
         {
             "title": "Understanding Quantum Computing",
-            "description": "A deep dive into the world of quantum computing and its implications for the future of technology.",
+            "description": "A deep dive into the world of quantum computing.",
             "published": "20260315",
             "url": "https://www.youtube.com/watch?v=sample1",
             "video_id": "sample1",
-            "audio_url": "media/sample1.mp3",
+            "audio_url": f"media/{feed_name}/sample1.mp3",
             "audio_type": "audio/mpeg",
             "length": 12345678,
             "channel_title": "Sample Channel",
         },
         {
             "title": "Python 3.14 New Features Explained",
-            "description": "Exploring the latest features in Python 3.14 including the new pattern matching enhancements.",
+            "description": "Exploring the latest features in Python 3.14.",
             "published": "20260310",
             "url": "https://www.youtube.com/watch?v=sample2",
             "video_id": "sample2",
-            "audio_url": "media/sample2.mp3",
+            "audio_url": f"media/{feed_name}/sample2.mp3",
             "audio_type": "audio/mpeg",
             "length": 23456789,
             "channel_title": "Sample Channel",
         },
         {
             "title": "Building CLI Tools in Rust",
-            "description": "Step-by-step guide to building fast and reliable command-line tools using Rust.",
+            "description": "Step-by-step guide to building CLI tools using Rust.",
             "published": "20260305",
             "url": "https://www.youtube.com/watch?v=sample3",
             "video_id": "sample3",
-            "audio_url": "media/sample3.mp3",
+            "audio_url": f"media/{feed_name}/sample3.mp3",
             "audio_type": "audio/mpeg",
             "length": 34567890,
             "channel_title": "Sample Channel",
         },
         {
             "title": "The Future of AI Assistants",
-            "description": "A discussion about the evolving landscape of AI-powered assistants and their impact on productivity.",
+            "description": "A discussion about AI-powered assistants.",
             "published": "20260228",
             "url": "https://www.youtube.com/watch?v=sample4",
             "video_id": "sample4",
-            "audio_url": "media/sample4.mp3",
+            "audio_url": f"media/{feed_name}/sample4.mp3",
             "audio_type": "audio/mpeg",
             "length": 45678901,
             "channel_title": "Sample Channel",
         },
         {
             "title": "Docker for Beginners",
-            "description": "Everything you need to know to get started with Docker and containerization.",
+            "description": "Everything you need to get started with Docker.",
             "published": "20260220",
             "url": "https://www.youtube.com/watch?v=sample5",
             "video_id": "sample5",
-            "audio_url": "media/sample5.mp3",
+            "audio_url": f"media/{feed_name}/sample5.mp3",
             "audio_type": "audio/mpeg",
             "length": 56789012,
             "channel_title": "Sample Channel",
@@ -219,11 +226,11 @@ def parse_pub_date(published):
     return str(published)
 
 
-def generate_rss(videos, channel_url):
+def generate_rss(videos, channel_url, name):
     rss = ET.Element("rss", version="2.0")
     channel = ET.SubElement(rss, "channel")
 
-    channel_title = videos[0]["channel_title"] if videos else "YouTube Podcast"
+    channel_title = videos[0]["channel_title"] if videos else name
     ET.SubElement(channel, "title").text = channel_title
     ET.SubElement(channel, "link").text = channel_url
 
@@ -264,37 +271,56 @@ def generate_rss(videos, channel_url):
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + raw
 
 
+def write_feed(videos, channel_url, name, output_path):
+    rss_xml = generate_rss(videos, channel_url, name)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(rss_xml)
+    print(f"  Written {output_path} with {len(videos)} items.", file=sys.stderr)
+
+
 def main():
     args = parse_args()
 
-    config = {}
-    if not args.test or not args.url:
-        config = load_config(args.config)
+    if args.test:
+        feed_name = args.url or "test"
+        videos = generate_sample_videos(feed_name)
+        output = args.output or f"{feed_name}.xml"
+        channel_url = "https://youtube.com/@test"
+        write_feed(videos, channel_url, feed_name, output)
+        return
 
-    channel_url = args.url or config.get("channel_url", "")
+    if args.url:
+        feed_name = "feed"
+        output = args.output or f"{feed_name}.xml"
+        validate_name(feed_name)
+        client = None
+        videos = process_channel(feed_name, args.url, args.num_videos, client)
+        write_feed(videos, args.url, feed_name, output)
+        return
 
-    if not channel_url and not args.test:
-        print("Error: YouTube channel URL required. Provide as argument or set in config.yml.", file=sys.stderr)
+    config = load_config(args.config)
+    if not config:
+        print(f"No config file found at {args.config}", file=sys.stderr)
         sys.exit(1)
 
-    if args.test:
-        data = load_test_data()
-        if data:
-            videos = data["videos"]
-            channel_url = data.get("channel_url", channel_url or "https://youtube.com/@test")
-        else:
-            videos = generate_sample_videos()
-            channel_url = channel_url or "https://youtube.com/@test"
-    else:
-        client = config.get("player_client") or None
-        videos = fetch_videos_real(channel_url, args.num_videos, player_client=client)
+    feeds = config.get("feeds", [])
+    if not feeds:
+        print("No feeds defined in config.yml", file=sys.stderr)
+        sys.exit(1)
 
-    rss_xml = generate_rss(videos, channel_url)
-
-    with open(args.output, "w", encoding="utf-8") as f:
-        f.write(rss_xml)
-
-    print(f"Feed written to {args.output} with {len(videos)} items.", file=sys.stderr)
+    for feed in feeds:
+        name = feed.get("name", "").strip()
+        url = feed.get("channel_url", "").strip()
+        if not name or not url:
+            print("Skipping feed with missing name or channel_url", file=sys.stderr)
+            continue
+        validate_name(name)
+        client = feed.get("player_client") or None
+        num = feed.get("num_videos") or args.num_videos
+        output = args.output or f"{name}.xml"
+        print(f"Processing feed: {name}", file=sys.stderr)
+        videos = process_channel(name, url, num, player_client=client)
+        write_feed(videos, url, name, output)
 
 
 if __name__ == "__main__":

@@ -19,10 +19,12 @@ Fork this repo on GitHub.
 
 ### 2. Set your channel URL
 
-Edit `config.yml` in your fork and change `channel_url` to your YouTube channel:
+Edit `config.yml` in your fork and add your YouTube channels:
 
 ```yaml
-channel_url: https://www.youtube.com/@YourChannel
+feeds:
+  - name: my-podcast
+    channel_url: https://www.youtube.com/@YourChannel
 ```
 
 ### 3. Export YouTube cookies
@@ -91,10 +93,10 @@ docker build -t yt-pod-rss .
 docker run -v "$PWD/media:/app/media" -v "$PWD/cookies.txt:/app/cookies.txt" yt-pod-rss
 
 # Pass arguments directly to generate_feed.py
-docker run -v "$PWD/media:/app/media" yt-pod-rss "https://www.youtube.com/@channel" -n 5
+docker run -v "$PWD/media:/app/media" yt-pod-rss --test
 
-# Test mode (no mounts needed)
-docker run yt-pod-rss --test
+# Single URL mode (override config)
+docker run -v "$PWD/media:/app/media" yt-pod-rss "https://www.youtube.com/@channel" -n 5
 
 # Use YT_COOKIES env var instead of a file
 docker run -e YT_COOKIES="$(cat cookies.txt)" -v "$PWD/media:/app/media" yt-pod-rss
@@ -104,13 +106,14 @@ docker run -e YT_COOKIES="$(cat cookies.txt)" -v "$PWD/media:/app/media" yt-pod-
 
 ```
 yt-pod-rss/
-├── config.yml                 # Channel URL and settings
+├── config.yml                 # Feed list (name + channel_url per feed)
 ├── generate_feed.py           # Main script
 ├── requirements.txt           # Python dependencies
 ├── test_data.json             # Sample data for --test mode
 ├── cookies.txt                # YouTube cookies (optional, not committed)
+├── Dockerfile                 # Docker image definition
 ├── media/                     # Downloaded audio files (not committed)
-├── feed.xml                   # Generated RSS feed (not committed)
+├── *.xml                      # Generated RSS feeds (not committed)
 └── .github/workflows/
     └── generate.yml           # GitHub Actions workflow (daily schedule)
 ```

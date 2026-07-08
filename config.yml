@@ -1,1 +1,3 @@
 channel_url: https://www.youtube.com/@streaminghoramagica7290/
+# cookies_file: cookies.txt  # Netscape-format cookies file (exported from your browser after logging into YouTube)
+# player_client: android     # Switch to "android" if you get bot-blocked without cookies (android formats may be flaky)

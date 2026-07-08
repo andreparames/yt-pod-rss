@@ -65,7 +65,7 @@ def fetch_videos_real(channel_url, num_videos, player_client=None):
         channel_url += "/videos"
 
     def base_opts():
-        opts = {"quiet": True, "remote_component_downloader": "github"}
+        opts = {"quiet": True, "remote_components": ["ejs:github"]}
         if player_client:
             opts["extractor_args"] = {"youtube": {"player_client": [player_client]}}
         cookies_path = os.path.join(os.path.dirname(__file__), "cookies.txt")

@@ -58,18 +58,23 @@ def _extract_audio(entry):
 
 def fetch_videos_real(channel_url, num_videos, player_client=None):
     import yt_dlp
+    from yt_dlp.utils import DownloadError
 
     channel_url = channel_url.rstrip("/")
     if not channel_url.endswith("/videos"):
         channel_url += "/videos"
 
-    ydl_opts = {"quiet": True, "extract_flat": False}
-    if player_client:
-        ydl_opts["extractor_args"] = {"youtube": {"player_client": [player_client]}}
-    cookies_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
-    if os.path.exists(cookies_path):
-        ydl_opts["cookiefile"] = cookies_path
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    def base_opts():
+        opts = {"quiet": True}
+        if player_client:
+            opts["extractor_args"] = {"youtube": {"player_client": [player_client]}}
+        cookies_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
+        if os.path.exists(cookies_path):
+            opts["cookiefile"] = cookies_path
+        return opts
+
+    # Fetch video list with flat mode (resilient against format errors)
+    with yt_dlp.YoutubeDL({**base_opts(), "extract_flat": "in_playlist"}) as ydl:
         info = ydl.extract_info(channel_url, download=False)
 
     channel_title = info.get("channel", info.get("title", ""))
@@ -78,6 +83,8 @@ def fetch_videos_real(channel_url, num_videos, player_client=None):
         print("No videos found.", file=sys.stderr)
         sys.exit(1)
 
+    full_ydl = yt_dlp.YoutubeDL(base_opts())
+
     videos = []
     for entry in entries:
         if len(videos) >= num_videos:
@@ -85,14 +92,26 @@ def fetch_videos_real(channel_url, num_videos, player_client=None):
         if _is_short(entry):
             continue
 
-        audio_url, audio_type, length = _extract_audio(entry)
+        vid = entry["id"]
+        try:
+            vinfo = full_ydl.extract_info(f"https://www.youtube.com/watch?v={vid}", download=False)
+        except DownloadError as e:
+            print(f"  Error fetching {vid}: {e}", file=sys.stderr)
+            if hasattr(e, "exc_info") and e.exc_info:
+                partial = getattr(e.exc_info, "partial_data", None)
+                if partial and partial.get("formats"):
+                    fmts = partial["formats"]
+                    print(f"  Available format IDs: {', '.join(f['format_id'] for f in fmts)}", file=sys.stderr)
+            continue
+
+        audio_url, audio_type, length = _extract_audio(vinfo)
 
         videos.append({
-            "title": entry.get("title", ""),
-            "description": entry.get("description") or "",
-            "published": entry.get("upload_date", ""),
-            "url": f"https://www.youtube.com/watch?v={entry['id']}",
-            "video_id": entry["id"],
+            "title": vinfo.get("title", entry.get("title", "")),
+            "description": vinfo.get("description") or entry.get("description", ""),
+            "published": vinfo.get("upload_date") or entry.get("upload_date", ""),
+            "url": f"https://www.youtube.com/watch?v={vid}",
+            "video_id": vid,
             "audio_url": audio_url,
             "audio_type": audio_type,
             "length": length,

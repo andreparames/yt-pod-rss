@@ -45,6 +45,8 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Generate feed
+        env:
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
         run: |
           if [ -n "${{ inputs.url }}" ]; then
             python generate_feed.py "${{ inputs.url }}" -n "${{ inputs.num_videos }}" -o feed.xml

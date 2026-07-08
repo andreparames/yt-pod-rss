@@ -43,13 +43,26 @@ def _is_short(entry):
     return False
 
 
+def resolve_cookies():
+    cookies_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
+    if os.path.exists(cookies_path):
+        return cookies_path
+    env_cookies = os.environ.get("YT_COOKIES")
+    if env_cookies:
+        tmp = os.path.join(os.path.dirname(__file__), ".cookies_tmp.txt")
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(env_cookies)
+        return tmp
+    return None
+
+
 def base_opts(player_client=None):
     opts = {"quiet": True, "remote_components": ["ejs:github"]}
     if player_client:
         opts["extractor_args"] = {"youtube": {"player_client": [player_client]}}
-    cookies_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
-    if os.path.exists(cookies_path):
-        opts["cookiefile"] = cookies_path
+    cookie_file = resolve_cookies()
+    if cookie_file:
+        opts["cookiefile"] = cookie_file
     return opts
 
 

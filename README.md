@@ -81,6 +81,25 @@ python generate_feed.py -n 10
 
 If you get bot-blocked, place a `cookies.txt` file in the repo root or set the `YT_COOKIES` environment variable.
 
+## Running with Docker
+
+```bash
+# Build the image
+docker build -t yt-pod-rss .
+
+# Run with config.yml defaults (mount media/ and cookies.txt for persistence)
+docker run -v "$PWD/media:/app/media" -v "$PWD/cookies.txt:/app/cookies.txt" yt-pod-rss
+
+# Pass arguments directly to generate_feed.py
+docker run -v "$PWD/media:/app/media" yt-pod-rss "https://www.youtube.com/@channel" -n 5
+
+# Test mode (no mounts needed)
+docker run yt-pod-rss --test
+
+# Use YT_COOKIES env var instead of a file
+docker run -e YT_COOKIES="$(cat cookies.txt)" -v "$PWD/media:/app/media" yt-pod-rss
+```
+
 ## Project structure
 
 ```

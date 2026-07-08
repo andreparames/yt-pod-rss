@@ -1,0 +1,60 @@
+{
+  "channel_url": "https://www.youtube.com/@testchannel",
+  "videos": [
+    {
+      "title": "Understanding Quantum Computing",
+      "description": "A deep dive into the world of quantum computing and its implications for the future of technology.",
+      "published": "20260315",
+      "url": "https://www.youtube.com/watch?v=sample1",
+      "video_id": "sample1",
+      "audio_url": "https://example.com/audio/sample1.mp3",
+      "audio_type": "audio/mpeg",
+      "length": 12345678,
+      "channel_title": "Test Channel"
+    },
+    {
+      "title": "Python 3.14 New Features Explained",
+      "description": "Exploring the latest features in Python 3.14 including the new pattern matching enhancements.",
+      "published": "20260310",
+      "url": "https://www.youtube.com/watch?v=sample2",
+      "video_id": "sample2",
+      "audio_url": "https://example.com/audio/sample2.mp3",
+      "audio_type": "audio/mpeg",
+      "length": 23456789,
+      "channel_title": "Test Channel"
+    },
+    {
+      "title": "Building CLI Tools in Rust",
+      "description": "Step-by-step guide to building fast and reliable command-line tools using Rust.",
+      "published": "20260305",
+      "url": "https://www.youtube.com/watch?v=sample3",
+      "video_id": "sample3",
+      "audio_url": "https://example.com/audio/sample3.mp3",
+      "audio_type": "audio/mpeg",
+      "length": 34567890,
+      "channel_title": "Test Channel"
+    },
+    {
+      "title": "The Future of AI Assistants",
+      "description": "A discussion about the evolving landscape of AI-powered assistants and their impact on productivity.",
+      "published": "20260228",
+      "url": "https://www.youtube.com/watch?v=sample4",
+      "video_id": "sample4",
+      "audio_url": "https://example.com/audio/sample4.mp3",
+      "audio_type": "audio/mpeg",
+      "length": 45678901,
+      "channel_title": "Test Channel"
+    },
+    {
+      "title": "Docker for Beginners",
+      "description": "Everything you need to know to get started with Docker and containerization.",
+      "published": "20260220",
+      "url": "https://www.youtube.com/watch?v=sample5",
+      "video_id": "sample5",
+      "audio_url": "https://example.com/audio/sample5.mp3",
+      "audio_type": "audio/mpeg",
+      "length": 56789012,
+      "channel_title": "Test Channel"
+    }
+  ]
+}

@@ -111,6 +111,7 @@ def upload_to_storage(storage, filepath, key):
             raise
     print(f"  Uploading to S3...", file=sys.stderr)
     storage["client"].upload_file(filepath, storage["bucket"], key)
+    os.remove(filepath)
 
 
 def download_audio(video_id, media_dir, feed_name, player_client=None):

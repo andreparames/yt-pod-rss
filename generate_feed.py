@@ -19,6 +19,7 @@ def parse_args():
     parser.add_argument("-n", "--num-videos", type=int, default=20, help="Number of recent videos (default: 20)")
     parser.add_argument("-c", "--config", default="config.yml", help="Config file (default: config.yml)")
     parser.add_argument("--test", action="store_true", help="Use sample test data instead of YouTube")
+    parser.add_argument("--base-url", default=None, help="Base URL of deployed media (e.g., https://user.github.io/repo). Skips download for files already on remote.")
     return parser.parse_args()
 
 
@@ -73,6 +74,25 @@ def base_opts(player_client=None):
     return opts
 
 
+def check_remote_file(base_url, feed_name, video_id):
+    """Check if an audio file already exists on the remote (e.g., previous Pages deployment).
+    Returns (remote_url, file_size, mime_type) or (None, 0, None) if not found."""
+    import urllib.request
+    import urllib.error
+    base = base_url.rstrip("/")
+    for ext in ["m4a", "mp3", "webm", "opus"]:
+        url = f"{base}/media/{feed_name}/{video_id}.{ext}"
+        try:
+            req = urllib.request.Request(url, method="HEAD")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                size = resp.headers.get("Content-Length")
+                mime = "audio/mp4" if ext == "m4a" else f"audio/{ext}"
+                return url, int(size) if size else 0, mime
+        except urllib.error.HTTPError:
+            continue
+    return None, 0, None
+
+
 def download_audio(video_id, media_dir, feed_name, player_client=None):
     import yt_dlp
 
@@ -98,7 +118,7 @@ def download_audio(video_id, media_dir, feed_name, player_client=None):
     return info, rel_path, mime, size
 
 
-def process_channel(name, channel_url, num_videos, player_client=None):
+def process_channel(name, channel_url, num_videos, player_client=None, base_url=None):
     import yt_dlp
 
     channel_url = channel_url.rstrip("/")
@@ -125,6 +145,24 @@ def process_channel(name, channel_url, num_videos, player_client=None):
             continue
 
         vid = entry["id"]
+
+        if base_url:
+            remote_url, remote_size, remote_mime = check_remote_file(base_url, name, vid)
+            if remote_url:
+                print(f"  {vid} exists on remote, skipping download", file=sys.stderr)
+                videos.append({
+                    "title": entry.get("title", ""),
+                    "description": entry.get("description", ""),
+                    "published": entry.get("upload_date", ""),
+                    "url": f"https://www.youtube.com/watch?v={vid}",
+                    "video_id": vid,
+                    "audio_url": remote_url,
+                    "audio_type": remote_mime,
+                    "length": remote_size,
+                    "channel_title": channel_title,
+                })
+                continue
+
         print(f"  Downloading {vid}...", file=sys.stderr)
         try:
             vinfo, rel_path, mime, size = download_audio(vid, media_dir, name, player_client)
@@ -132,13 +170,15 @@ def process_channel(name, channel_url, num_videos, player_client=None):
             print(f"  Error downloading {vid}: {e}", file=sys.stderr)
             continue
 
+        audio_url = f"{base_url.rstrip('/')}/{rel_path}" if base_url else rel_path
+
         videos.append({
             "title": vinfo.get("title", entry.get("title", "")),
             "description": vinfo.get("description") or entry.get("description", ""),
             "published": vinfo.get("upload_date") or entry.get("upload_date", ""),
             "url": f"https://www.youtube.com/watch?v={vid}",
             "video_id": vid,
-            "audio_url": rel_path,
+            "audio_url": audio_url,
             "audio_type": mime,
             "length": size,
             "channel_title": channel_title,
@@ -280,6 +320,7 @@ def write_feed(videos, channel_url, name, output_path):
 
 def main():
     args = parse_args()
+    base_url = args.base_url or os.environ.get("PAGES_BASE_URL")
 
     if args.test:
         feed_name = args.url or "test"
@@ -294,7 +335,7 @@ def main():
         output = args.output or f"{feed_name}.xml"
         validate_name(feed_name)
         client = None
-        videos = process_channel(feed_name, args.url, args.num_videos, client)
+        videos = process_channel(feed_name, args.url, args.num_videos, client, base_url)
         write_feed(videos, args.url, feed_name, output)
         return
 
@@ -319,7 +360,7 @@ def main():
         num = feed.get("num_videos") or args.num_videos
         output = args.output or f"{name}.xml"
         print(f"Processing feed: {name}", file=sys.stderr)
-        videos = process_channel(name, url, num, player_client=client)
+        videos = process_channel(name, url, num, player_client=client, base_url=base_url)
         write_feed(videos, url, name, output)
 
 

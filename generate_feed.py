@@ -105,13 +105,13 @@ def upload_to_storage(storage, filepath, key):
     import botocore
     try:
         storage["client"].head_object(Bucket=storage["bucket"], Key=key)
-        return
+        return False
     except botocore.exceptions.ClientError as e:
         if e.response["Error"]["Code"] != "404":
             raise
     print(f"  Uploading to S3...", file=sys.stderr)
     storage["client"].upload_file(filepath, storage["bucket"], key)
-    os.remove(filepath)
+    return True
 
 
 def download_audio(video_id, media_dir, feed_name, player_client=None):
@@ -176,7 +176,8 @@ def process_channel(name, channel_url, num_videos, player_client=None, storage=N
         audio_url = rel_path
         if storage:
             key = f"{storage['prefix']}{name}/{vid}.{filepath.rsplit('.', 1)[-1]}"
-            upload_to_storage(storage, filepath, key)
+            if upload_to_storage(storage, filepath, key):
+                os.remove(filepath)
             audio_url = public_url(storage, key)
 
         videos.append({

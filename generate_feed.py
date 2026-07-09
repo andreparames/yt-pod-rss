@@ -149,16 +149,23 @@ def process_channel(name, channel_url, num_videos, player_client=None, base_url=
         if base_url:
             remote_url, remote_size, remote_mime = check_remote_file(base_url, name, vid)
             if remote_url:
-                print(f"  {vid} exists on remote, skipping download", file=sys.stderr)
+                ext = remote_url.rsplit(".", 1)[-1]
+                local_path = os.path.join(media_dir, f"{vid}.{ext}")
+                if not os.path.exists(local_path):
+                    print(f"  Restoring {vid} from remote", file=sys.stderr)
+                    import urllib.request
+                    urllib.request.urlretrieve(remote_url, local_path)
+                rel_path = f"media/{name}/{vid}.{ext}"
+                size = os.path.getsize(local_path)
                 videos.append({
                     "title": entry.get("title", ""),
                     "description": entry.get("description", ""),
                     "published": entry.get("upload_date", ""),
                     "url": f"https://www.youtube.com/watch?v={vid}",
                     "video_id": vid,
-                    "audio_url": remote_url,
+                    "audio_url": rel_path,
                     "audio_type": remote_mime,
-                    "length": remote_size,
+                    "length": size,
                     "channel_title": channel_title,
                 })
                 continue
@@ -170,15 +177,13 @@ def process_channel(name, channel_url, num_videos, player_client=None, base_url=
             print(f"  Error downloading {vid}: {e}", file=sys.stderr)
             continue
 
-        audio_url = f"{base_url.rstrip('/')}/{rel_path}" if base_url else rel_path
-
         videos.append({
             "title": vinfo.get("title", entry.get("title", "")),
             "description": vinfo.get("description") or entry.get("description", ""),
             "published": vinfo.get("upload_date") or entry.get("upload_date", ""),
             "url": f"https://www.youtube.com/watch?v={vid}",
             "video_id": vid,
-            "audio_url": audio_url,
+            "audio_url": rel_path,
             "audio_type": mime,
             "length": size,
             "channel_title": channel_title,

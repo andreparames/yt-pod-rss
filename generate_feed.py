@@ -101,17 +101,23 @@ def public_url(storage, key):
     return f"https://{storage['bucket']}.{storage['endpoint']}/{key}"
 
 
-def upload_to_storage(storage, filepath, key):
+def check_storage(storage, feed_name, video_id):
+    """Check if file exists in S3. Returns (key, size, ext) or (None, 0, None)."""
     import botocore
-    try:
-        storage["client"].head_object(Bucket=storage["bucket"], Key=key)
-        return False
-    except botocore.exceptions.ClientError as e:
-        if e.response["Error"]["Code"] != "404":
-            raise
+    for ext in ["m4a", "mp3", "webm", "opus"]:
+        key = f"{storage['prefix']}{feed_name}/{video_id}.{ext}"
+        try:
+            resp = storage["client"].head_object(Bucket=storage["bucket"], Key=key)
+            return key, resp.get("ContentLength", 0), ext
+        except botocore.exceptions.ClientError as e:
+            if e.response["Error"]["Code"] != "404":
+                raise
+    return None, 0, None
+
+
+def upload_to_storage(storage, filepath, key):
     print(f"  Uploading to S3...", file=sys.stderr)
     storage["client"].upload_file(filepath, storage["bucket"], key)
-    return True
 
 
 def download_audio(video_id, media_dir, feed_name, player_client=None):
@@ -166,6 +172,25 @@ def process_channel(name, channel_url, num_videos, player_client=None, storage=N
             continue
 
         vid = entry["id"]
+
+        if storage:
+            s3_key, s3_size, s3_ext = check_storage(storage, name, vid)
+            if s3_key:
+                print(f"  {vid} exists on S3, skipping download", file=sys.stderr)
+                mime = "audio/mp4" if s3_ext == "m4a" else f"audio/{s3_ext}"
+                videos.append({
+                    "title": entry.get("title", ""),
+                    "description": entry.get("description", ""),
+                    "published": entry.get("upload_date", ""),
+                    "url": f"https://www.youtube.com/watch?v={vid}",
+                    "video_id": vid,
+                    "audio_url": public_url(storage, s3_key),
+                    "audio_type": mime,
+                    "length": s3_size,
+                    "channel_title": channel_title,
+                })
+                continue
+
         print(f"  Downloading {vid}...", file=sys.stderr)
         try:
             vinfo, rel_path, mime, size, filepath = download_audio(vid, media_dir, name, player_client)
@@ -176,8 +201,8 @@ def process_channel(name, channel_url, num_videos, player_client=None, storage=N
         audio_url = rel_path
         if storage:
             key = f"{storage['prefix']}{name}/{vid}.{filepath.rsplit('.', 1)[-1]}"
-            if upload_to_storage(storage, filepath, key):
-                os.remove(filepath)
+            upload_to_storage(storage, filepath, key)
+            os.remove(filepath)
             audio_url = public_url(storage, key)
 
         videos.append({

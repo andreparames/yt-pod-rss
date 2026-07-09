@@ -73,6 +73,53 @@ def base_opts(player_client=None):
     return opts
 
 
+def init_storage():
+    endpoint = os.environ.get("S3_ENDPOINT")
+    if not endpoint:
+        return None
+    import boto3
+    session = boto3.Session(
+        aws_access_key_id=os.environ["S3_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["S3_SECRET_ACCESS_KEY"],
+        region_name=os.environ.get("S3_REGION"),
+    )
+    path_style = os.environ.get("S3_PATH_STYLE", "").lower() in ("1", "true", "yes")
+    client = session.client(
+        "s3",
+        endpoint_url=f"https://{endpoint}",
+        config=boto3.session.Config(s3={"addressing_style": "path" if path_style else "virtual"}),
+    )
+    bucket = os.environ["S3_BUCKET"]
+    prefix = os.environ.get("S3_PREFIX", "media/").strip("/") + "/"
+    return {"client": client, "bucket": bucket, "prefix": prefix, "endpoint": endpoint,
+            "path_style": path_style}
+
+
+def public_url(storage, key):
+    if storage["path_style"]:
+        return f"https://{storage['endpoint']}/{storage['bucket']}/{key}"
+    return f"https://{storage['bucket']}.{storage['endpoint']}/{key}"
+
+
+def check_storage(storage, feed_name, video_id):
+    """Check if file exists in S3. Returns (key, size, ext) or (None, 0, None)."""
+    import botocore
+    for ext in ["m4a", "mp3", "webm", "opus"]:
+        key = f"{storage['prefix']}{feed_name}/{video_id}.{ext}"
+        try:
+            resp = storage["client"].head_object(Bucket=storage["bucket"], Key=key)
+            return key, resp.get("ContentLength", 0), ext
+        except botocore.exceptions.ClientError as e:
+            if e.response["Error"]["Code"] != "404":
+                raise
+    return None, 0, None
+
+
+def upload_to_storage(storage, filepath, key):
+    print(f"  Uploading to S3...", file=sys.stderr)
+    storage["client"].upload_file(filepath, storage["bucket"], key)
+
+
 def download_audio(video_id, media_dir, feed_name, player_client=None):
     import yt_dlp
 
@@ -95,10 +142,10 @@ def download_audio(video_id, media_dir, feed_name, player_client=None):
     size = os.path.getsize(filepath)
     mime = "audio/mp4" if ext == "m4a" else f"audio/{ext}"
     rel_path = f"media/{feed_name}/{video_id}.{ext}"
-    return info, rel_path, mime, size
+    return info, rel_path, mime, size, filepath
 
 
-def process_channel(name, channel_url, num_videos, player_client=None):
+def process_channel(name, channel_url, num_videos, player_client=None, storage=None):
     import yt_dlp
 
     channel_url = channel_url.rstrip("/")
@@ -125,12 +172,38 @@ def process_channel(name, channel_url, num_videos, player_client=None):
             continue
 
         vid = entry["id"]
+
+        if storage:
+            s3_key, s3_size, s3_ext = check_storage(storage, name, vid)
+            if s3_key:
+                print(f"  {vid} exists on S3, skipping download", file=sys.stderr)
+                mime = "audio/mp4" if s3_ext == "m4a" else f"audio/{s3_ext}"
+                videos.append({
+                    "title": entry.get("title", ""),
+                    "description": entry.get("description", ""),
+                    "published": entry.get("upload_date", ""),
+                    "url": f"https://www.youtube.com/watch?v={vid}",
+                    "video_id": vid,
+                    "audio_url": public_url(storage, s3_key),
+                    "audio_type": mime,
+                    "length": s3_size,
+                    "channel_title": channel_title,
+                })
+                continue
+
         print(f"  Downloading {vid}...", file=sys.stderr)
         try:
-            vinfo, rel_path, mime, size = download_audio(vid, media_dir, name, player_client)
+            vinfo, rel_path, mime, size, filepath = download_audio(vid, media_dir, name, player_client)
         except Exception as e:
             print(f"  Error downloading {vid}: {e}", file=sys.stderr)
             continue
+
+        audio_url = rel_path
+        if storage:
+            key = f"{storage['prefix']}{name}/{vid}.{filepath.rsplit('.', 1)[-1]}"
+            upload_to_storage(storage, filepath, key)
+            os.remove(filepath)
+            audio_url = public_url(storage, key)
 
         videos.append({
             "title": vinfo.get("title", entry.get("title", "")),
@@ -138,7 +211,7 @@ def process_channel(name, channel_url, num_videos, player_client=None):
             "published": vinfo.get("upload_date") or entry.get("upload_date", ""),
             "url": f"https://www.youtube.com/watch?v={vid}",
             "video_id": vid,
-            "audio_url": rel_path,
+            "audio_url": audio_url,
             "audio_type": mime,
             "length": size,
             "channel_title": channel_title,
@@ -280,6 +353,7 @@ def write_feed(videos, channel_url, name, output_path):
 
 def main():
     args = parse_args()
+    storage = init_storage()
 
     if args.test:
         feed_name = args.url or "test"
@@ -294,7 +368,7 @@ def main():
         output = args.output or f"{feed_name}.xml"
         validate_name(feed_name)
         client = None
-        videos = process_channel(feed_name, args.url, args.num_videos, client)
+        videos = process_channel(feed_name, args.url, args.num_videos, client, storage)
         write_feed(videos, args.url, feed_name, output)
         return
 
@@ -319,7 +393,7 @@ def main():
         num = feed.get("num_videos") or args.num_videos
         output = args.output or f"{name}.xml"
         print(f"Processing feed: {name}", file=sys.stderr)
-        videos = process_channel(name, url, num, player_client=client)
+        videos = process_channel(name, url, num, player_client=client, storage=storage)
         write_feed(videos, url, name, output)
 
 

@@ -25,6 +25,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -39,7 +43,7 @@ jobs:
 
       - name: Generate feeds
         env:
-          SITE_URL: https://ytpods.andreparames.com
+          SITE_URL: ${{ steps.pages.outputs.base_url }}
           YT_COOKIES: ${{ secrets.YT_COOKIES }}
         run: python generate_feed.py -n "${{ inputs.num_videos || '20' }}"
 

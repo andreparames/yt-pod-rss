@@ -118,12 +118,14 @@ def process_channel(name, channel_url, num_videos, player_client=None):
     os.makedirs(media_dir, exist_ok=True)
 
     videos = []
+    candidates = 0
     for entry in entries:
         if len(videos) >= num_videos:
             break
         if _is_short(entry):
             continue
 
+        candidates += 1
         vid = entry["id"]
         print(f"  Downloading {vid}...", file=sys.stderr)
         try:
@@ -143,6 +145,10 @@ def process_channel(name, channel_url, num_videos, player_client=None):
             "length": size,
             "channel_title": channel_title,
         })
+
+    if candidates and not videos:
+        raise RuntimeError(f"Could not download any videos for {name}")
+
     return videos
 
 

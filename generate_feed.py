@@ -7,9 +7,16 @@ import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
+ITUNES_NS = "http://www.itunes.com/dtds/podcast-1.0.dtd"
+
 ET.register_namespace("atom", "http://www.w3.org/2005/Atom")
+ET.register_namespace("itunes", ITUNES_NS)
 
 NAME_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
+
+
+def itunes(tag):
+    return f"{{{ITUNES_NS}}}{tag}"
 
 
 def parse_args():
@@ -232,28 +239,65 @@ def parse_pub_date(published):
     return str(published)
 
 
-def generate_rss(videos, channel_url, name):
+def resolve_url(path_or_url, site_url):
+    if not path_or_url:
+        return ""
+    if path_or_url.startswith(("http://", "https://")):
+        return path_or_url
+    if site_url:
+        return f"{site_url}/{path_or_url.lstrip('/')}"
+    return path_or_url
+
+
+def generate_rss(videos, channel_url, name, meta=None):
+    meta = meta or {}
     rss = ET.Element("rss", version="2.0")
     channel = ET.SubElement(rss, "channel")
     site_url = os.environ.get("SITE_URL", "").rstrip("/")
 
-    channel_title = videos[0]["channel_title"] if videos else name
+    channel_title = meta.get("title") or (videos[0]["channel_title"] if videos else name)
+    description = meta.get("description") or f"Podcast feed for {channel_title}"
+    language = meta.get("language") or "en-us"
+    author = meta.get("author") or channel_title
+    owner_name = meta.get("owner_name") or author
+    owner_email = meta.get("owner_email") or ""
+    artwork_url = resolve_url(meta.get("artwork"), site_url)
+    feed_url = resolve_url(f"{name}.xml", site_url)
+
     ET.SubElement(channel, "title").text = channel_title
-    ET.SubElement(channel, "link").text = channel_url
+    ET.SubElement(channel, "link").text = meta.get("link") or channel_url
 
     atom_link = ET.SubElement(channel, "{http://www.w3.org/2005/Atom}link")
-    atom_link.set("href", channel_url)
+    atom_link.set("href", feed_url)
     atom_link.set("rel", "self")
     atom_link.set("type", "application/rss+xml")
 
-    ET.SubElement(channel, "language").text = "en-us"
+    ET.SubElement(channel, "language").text = language
     ET.SubElement(channel, "lastBuildDate").text = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S %z")
-    ET.SubElement(channel, "description").text = f"Podcast feed for {channel_title}"
+    ET.SubElement(channel, "description").text = description
+
+    ET.SubElement(channel, itunes("author")).text = author
+    if owner_email:
+        owner = ET.SubElement(channel, itunes("owner"))
+        ET.SubElement(owner, itunes("name")).text = owner_name
+        ET.SubElement(owner, itunes("email")).text = owner_email
+
+    if artwork_url:
+        ET.SubElement(channel, itunes("image"), href=artwork_url)
+
+    category = meta.get("category")
+    if category:
+        cat = ET.SubElement(channel, itunes("category"), text=category)
+        if meta.get("subcategory"):
+            ET.SubElement(cat, itunes("category"), text=meta["subcategory"])
+
+    ET.SubElement(channel, itunes("explicit")).text = "true" if meta.get("explicit") else "false"
+    ET.SubElement(channel, itunes("type")).text = meta.get("type") or "episodic"
 
     image = ET.SubElement(channel, "image")
-    ET.SubElement(image, "url").text = "https://www.google.com/s2/favicons?domain=youtube.com&sz=128"
+    ET.SubElement(image, "url").text = artwork_url or "https://www.google.com/s2/favicons?domain=youtube.com&sz=128"
     ET.SubElement(image, "title").text = channel_title
-    ET.SubElement(image, "link").text = channel_url
+    ET.SubElement(image, "link").text = meta.get("link") or channel_url
 
     for v in videos:
         item = ET.SubElement(channel, "item")
@@ -268,6 +312,8 @@ def generate_rss(videos, channel_url, name):
         if v.get("description"):
             ET.SubElement(item, "description").text = v["description"]
 
+        ET.SubElement(item, itunes("explicit")).text = "true" if meta.get("explicit") else "false"
+
         if v.get("audio_url"):
             enc = ET.SubElement(item, "enclosure")
             audio_url = v["audio_url"]
@@ -281,8 +327,8 @@ def generate_rss(videos, channel_url, name):
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + raw
 
 
-def write_feed(videos, channel_url, name, output_path):
-    rss_xml = generate_rss(videos, channel_url, name)
+def write_feed(videos, channel_url, name, output_path, meta=None):
+    rss_xml = generate_rss(videos, channel_url, name, meta)
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(rss_xml)
     print(f"  Written {output_path} with {len(videos)} items.", file=sys.stderr)
@@ -305,7 +351,7 @@ def main():
         validate_name(feed_name)
         client = None
         videos = process_channel(feed_name, args.url, args.num_videos, client)
-        write_feed(videos, args.url, feed_name, output)
+        write_feed(videos, args.url, feed_name, output, meta={})
         return
 
     config = load_config(args.config)
@@ -330,7 +376,7 @@ def main():
         output = args.output or f"{name}.xml"
         print(f"Processing feed: {name}", file=sys.stderr)
         videos = process_channel(name, url, num, player_client=client)
-        write_feed(videos, url, name, output)
+        write_feed(videos, url, name, output, meta=feed)
 
 
 if __name__ == "__main__":

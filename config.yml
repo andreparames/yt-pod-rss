@@ -1,3 +1,19 @@
 feeds:
   - name: entreaguerraeapazpodcast
     channel_url: https://youtube.com/@entreaguerraeapazpodcast
+    title: Entre a Guerra e a Paz
+    description: >-
+      "Entre a Guerra e a Paz" é um podcast apresentado por Miguel Szymanski
+      sobre geopolítica e a influência que tem nas nossas vidas. O jornalista e
+      escritor recebe convidados para analisar os grandes conflitos e a
+      diplomacia internacional. Em cada episódio, explora os desafios globais do
+      nosso tempo, combinando análise e reflexão para um público que quer
+      acompanhar e compreender os temas da atualidade sem filtros ideológicos.
+    author: Miguel Szymanski
+    owner_name: Miguel Szymanski
+    owner_email: entreaguerraeapazpodcast@andreparames.com
+    language: pt
+    category: News
+    subcategory: Politics
+    explicit: false
+    artwork: artwork/entreaguerraeapazpodcast.jpg

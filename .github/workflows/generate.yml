@@ -52,6 +52,7 @@ jobs:
           mkdir -p _site
           cp *.xml _site/ 2>/dev/null || true
           if [ -d media ]; then cp -r media _site/; fi
+          if [ -d artwork ]; then cp -r artwork _site/; fi
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

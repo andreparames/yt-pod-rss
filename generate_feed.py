@@ -235,6 +235,7 @@ def parse_pub_date(published):
 def generate_rss(videos, channel_url, name):
     rss = ET.Element("rss", version="2.0")
     channel = ET.SubElement(rss, "channel")
+    site_url = os.environ.get("SITE_URL", "").rstrip("/")
 
     channel_title = videos[0]["channel_title"] if videos else name
     ET.SubElement(channel, "title").text = channel_title
@@ -269,7 +270,10 @@ def generate_rss(videos, channel_url, name):
 
         if v.get("audio_url"):
             enc = ET.SubElement(item, "enclosure")
-            enc.set("url", v["audio_url"])
+            audio_url = v["audio_url"]
+            if site_url:
+                audio_url = f"{site_url}/{audio_url.lstrip('/')}"
+            enc.set("url", audio_url)
             enc.set("type", v.get("audio_type", "audio/mpeg"))
             enc.set("length", str(v.get("length", "0")))
 

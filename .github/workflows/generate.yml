@@ -39,6 +39,7 @@ jobs:
 
       - name: Generate feeds
         env:
+          SITE_URL: https://ytpods.andreparames.com
           YT_COOKIES: ${{ secrets.YT_COOKIES }}
         run: python generate_feed.py -n "${{ inputs.num_videos || '20' }}"
 
